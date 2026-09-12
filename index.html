@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Andri — Asistente personal por voz</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="app">
+
+    <!-- Panel del asistente -->
+    <aside class="panel chat">
+      <header class="brand">
+        <div class="avatar">A</div>
+        <div>
+          <h1>Andri</h1>
+          <p class="tagline">Tu asistente por voz. Agenda, consulta y organiza tu calendario.</p>
+        </div>
+      </header>
+
+      <div id="status" class="status">Pulsa el micr&oacute;fono, di &laquo;Andri&raquo; y tu petici&oacute;n.</div>
+
+      <div id="conversation" class="conversation" aria-live="polite"></div>
+
+      <footer class="controls">
+        <button id="micBtn" class="micBtn" title="Grabar / detener">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor">
+            <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/>
+            <path d="M17 11a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V20h2v-2.08A7 7 0 0 0 19 11h-2z"/>
+          </svg>
+          <span class="ripple r1"></span>
+          <span class="ripple r2"></span>
+        </button>
+        <div class="textRow">
+          <input id="textInput" type="text"
+                 placeholder="Escribe tu comando&hellip; ej: tengo una cita el s&aacute;bado a las 4 de la tarde"
+                 autocomplete="off" />
+          <button id="sendBtn" class="sendBtn" title="Enviar">&rarr;</button>
+        </div>
+      </footer>
+
+      <section class="recordings">
+        <h2>Grabaciones de voz</h2>
+        <ul id="recordings"></ul>
+        <p class="hint">El audio se guarda solo en tu navegador: no se env&iacute;a a ning&uacute;n servidor.</p>
+      </section>
+    </aside>
+
+    <!-- Panel del calendario -->
+    <main class="panel cal">
+      <header class="calHeader">
+        <button id="prevMonth" class="nav" title="Mes anterior">&larr;</button>
+        <h2 id="monthLabel">&hellip;</h2>
+        <button id="nextMonth" class="nav" title="Mes siguiente">&rarr;</button>
+      </header>
+      <div id="calendar" class="calendar"></div>
+    </main>
+
+  </div>
+
+  <script src="js/parser.js"></script>
+  <script src="js/calendar.js"></script>
+  <script src="js/speech.js"></script>
+  <script src="js/assistant.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
