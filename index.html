@@ -2,30 +2,81 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Andri — Asistente personal por voz</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+  <!-- SEO -->
+  <title>Andri — Asistente personal por voz que agenda citas en tu calendario</title>
+  <meta name="description" content="Andri es un asistente de inteligencia artificial por voz en español. Pulsa el micrófono, dile que agendes una cita y Andri la guarda en tu calendario local, todo en tu navegador." />
+  <meta name="keywords" content="asistente de voz, inteligencia artificial, agendar citas, calendario, agenda, reconocimiento de voz, español, JavaScript, Siri, Andri" />
+  <meta name="author" content="Andri" />
+  <meta name="robots" content="index, follow" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="theme-color" content="#7c6cff" />
+
+  <!-- Open Graph / Social -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Andri" />
+  <meta property="og:title" content="Andri — Asistente personal por voz" />
+  <meta property="og:description" content="Agenda citas y eventos con tu voz. Todo se guarda de forma local en tu navegador." />
+  <meta property="og:locale" content="es_ES" />
+  <meta property="og:image" content="icons/andri.svg" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Andri — Asistente personal por voz" />
+  <meta name="twitter:description" content="Agenda citas y eventos con tu voz, sin salir de tu navegador." />
+
+  <!-- Iconos y PWA -->
+  <link rel="icon" type="image/svg+xml" href="icons/andri.svg" />
+  <link rel="apple-touch-icon" href="icons/andri.svg" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="application-name" content="Andri" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <!-- Datos estructurados (SEO) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Andri",
+    "applicationCategory": "ProductivityApplication",
+    "operatingSystem": "Any (navegador web)",
+    "description": "Asistente personal por voz que agenda citas y eventos en un calendario local.",
+    "inLanguage": "es",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "featureList": "Reconocimiento de voz, agendar citas, calendario local, síntesis de voz"
+  }
+  </script>
+
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
+
   <div class="app">
 
     <!-- Panel del asistente -->
-    <aside class="panel chat">
+    <aside class="panel chat" aria-label="Asistente Andri">
+
       <header class="brand">
-        <div class="avatar">A</div>
+        <div class="avatar" aria-hidden="true">A</div>
         <div>
           <h1>Andri</h1>
           <p class="tagline">Tu asistente por voz. Agenda, consulta y organiza tu calendario.</p>
         </div>
       </header>
 
-      <div id="status" class="status">Pulsa el micr&oacute;fono, di &laquo;Andri&raquo; y tu petici&oacute;n.</div>
+      <div id="status" class="status" role="status" aria-live="polite">
+        Pulsa el micr&oacute;fono, di &laquo;Andri&raquo; y tu petici&oacute;n.
+      </div>
 
-      <div id="conversation" class="conversation" aria-live="polite"></div>
+      <div id="conversation" class="conversation" role="log" aria-live="polite" aria-relevant="additions"></div>
 
       <footer class="controls">
-        <button id="micBtn" class="micBtn" title="Grabar / detener">
-          <svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor">
+        <div id="micLevel" class="micLevel" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <button id="micBtn" class="micBtn" type="button" aria-label="Grabar o detener la voz" title="Grabar / detener">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor" aria-hidden="true">
             <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/>
             <path d="M17 11a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V20h2v-2.08A7 7 0 0 0 19 11h-2z"/>
           </svg>
@@ -33,34 +84,43 @@
           <span class="ripple r2"></span>
         </button>
         <div class="textRow">
-          <input id="textInput" type="text"
-                 placeholder="Escribe tu comando&hellip; ej: tengo una cita el s&aacute;bado a las 4 de la tarde"
-                 autocomplete="off" />
-          <button id="sendBtn" class="sendBtn" title="Enviar">&rarr;</button>
+          <label class="visually-hidden" for="textInput">Escribe un comando para Andri</label>
+          <input id="textInput" type="text" autocomplete="off" autocapitalize="off"
+                 placeholder="Escribe tu comando&hellip; ej: tengo una cita el s&aacute;bado a las 4 de la tarde" />
+          <button id="sendBtn" class="sendBtn" type="button" aria-label="Enviar comando" title="Enviar">&rarr;</button>
         </div>
       </footer>
 
-      <section class="recordings">
-        <h2>Grabaciones de voz</h2>
+      <section class="recordings" aria-label="Grabaciones de voz">
+        <div class="recHeader">
+          <h2>Grabaciones de voz <span id="recCount" class="count"></span></h2>
+          <button id="clearRec" class="clearRec" type="button" title="Borrar todas las grabaciones">Vaciar</button>
+        </div>
         <ul id="recordings"></ul>
-        <p class="hint">El audio se guarda solo en tu navegador: no se env&iacute;a a ning&uacute;n servidor.</p>
+        <p class="hint">El audio se guarda en tu navegador (solo se conservan las &#250;ltimas 30). No se env&#237;a a ning&#250;n servidor.</p>
       </section>
+
     </aside>
 
     <!-- Panel del calendario -->
-    <main class="panel cal">
+    <main class="panel cal" aria-label="Calendario">
       <header class="calHeader">
-        <button id="prevMonth" class="nav" title="Mes anterior">&larr;</button>
-        <h2 id="monthLabel">&hellip;</h2>
-        <button id="nextMonth" class="nav" title="Mes siguiente">&rarr;</button>
+        <button id="prevMonth" class="nav" type="button" aria-label="Mes anterior" title="Mes anterior">&larr;</button>
+        <h2 id="monthLabel" aria-live="polite">&hellip;</h2>
+        <button id="nextMonth" class="nav" type="button" aria-label="Mes siguiente" title="Mes siguiente">&rarr;</button>
       </header>
       <div id="calendar" class="calendar"></div>
     </main>
 
   </div>
 
+  <noscript>
+    <p>Andri necesita JavaScript para funcionar. Activa JavaScript en tu navegador o escribe un comando de forma manual.</p>
+  </noscript>
+
   <script src="js/parser.js"></script>
   <script src="js/calendar.js"></script>
+  <script src="js/store.js"></script>
   <script src="js/speech.js"></script>
   <script src="js/assistant.js"></script>
   <script src="js/app.js"></script>

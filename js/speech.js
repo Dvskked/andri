@@ -1,5 +1,5 @@
-/* Captura de voz (grabación + transcripción) y síntesis de voz para Andri.
-   Todo ocurre en el navegador; no hay servidor de por medio. */
+/* Captura de voz (grabación + transcripción), medidor de volumen y
+   síntesis de voz para Andri. Las grabaciones se persisten en IndexedDB. */
 (function (global) {
   'use strict';
 
@@ -14,7 +14,11 @@
   var recognition = null;
   var accumulatedText = '';
 
-  var cb = { onRecording: null, onTranscript: null, onError: null };
+  var audioCtx = null;
+  var analyserNode = null;
+  var rafId = null;
+
+  var cb = { onRecording: null, onTranscript: null, onError: null, onLevel: null };
 
   function pad(n) { return (n < 10 ? '0' : '') + n; }
 
@@ -29,19 +33,63 @@
 
   function srSupported() { return !!SR; }
 
+  function hasIdb() { return typeof global.RecordingStore === 'object' && global.RecordingStore; }
+
+  /* --- Medidor de nivel de voz (barras visuales) --- */
+  function startLevelMeter() {
+    var AC = global.AudioContext || global.webkitAudioContext;
+    if (!AC) return;
+    try {
+      audioCtx = new AC();
+      var src = audioCtx.createMediaStreamSource(stream);
+      analyserNode = audioCtx.createAnalyser();
+      analyserNode.fftSize = 512;
+      src.connect(analyserNode);
+      var data = new Uint8Array(analyserNode.fftSize);
+
+      function tick() {
+        if (!analyserNode) return;
+        analyserNode.getByteTimeDomainData(data);
+        var sum = 0;
+        for (var i = 0; i < data.length; i++) {
+          var v = (data[i] - 128) / 128;
+          sum += v * v;
+        }
+        var level = Math.sqrt(sum / data.length);
+        if (cb.onLevel) cb.onLevel(Math.min(1, level * 3.2));
+        rafId = global.requestAnimationFrame(tick);
+      }
+      rafId = global.requestAnimationFrame(tick);
+    } catch (e) {
+      stopLevelMeter();
+    }
+  }
+
+  function stopLevelMeter() {
+    if (rafId) { global.cancelAnimationFrame(rafId); rafId = null; }
+    if (analyserNode) { try { analyserNode.disconnect(); } catch (e) { /* noop */ } analyserNode = null; }
+    if (audioCtx) { try { audioCtx.close(); } catch (e) { /* noop */ } audioCtx = null; }
+    if (cb.onLevel) cb.onLevel(0);
+  }
+
+  /* --- Reconocimiento (transcripción en vivo) --- */
   function makeRecognition() {
     if (!SR) return null;
     var r = new SR();
     r.lang = 'es-ES';
     r.continuous = true;
-    r.interimResults = false;
+    r.interimResults = true;
     r.maxAlternatives = 1;
 
     r.onresult = function (ev) {
-      var t = '';
-      for (var i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript;
-      accumulatedText = t.trim();
-      if (cb.onTranscript) cb.onTranscript(accumulatedText);
+      var finalText = '', interimText = '';
+      for (var i = 0; i < ev.results.length; i++) {
+        var item = ev.results[i];
+        if (item.isFinal) finalText += item[0].transcript;
+        else interimText += item[0].transcript;
+      }
+      if (finalText) accumulatedText = finalText.trim();
+      if (cb.onTranscript) cb.onTranscript((accumulatedText + ' ' + interimText).trim(), !!finalText);
     };
 
     r.onerror = function (e) {
@@ -54,12 +102,13 @@
       if (sessionActive && recorder && recorder.state === 'recording') {
         try { r.start(); } catch (err) { /* noop */ }
       }
-      if (cb.onTranscript) cb.onTranscript(accumulatedText);
+      if (cb.onTranscript) cb.onTranscript(accumulatedText, true);
     };
 
     return r;
   }
 
+  /* --- Sesión de grabación --- */
   async function startSession() {
     if (sessionActive) return;
     sessionActive = true;
@@ -79,24 +128,33 @@
       var rec = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         date: new Date(),
+        createdAt: Date.now(),
         duration: fmtDur(Date.now() - recStart),
         blob: blob,
-        url: URL.createObjectURL(blob),
         transcript: accumulatedText
       };
       recordings.unshift(rec);
 
+      stopLevelMeter();
       if (stream) {
         stream.getTracks().forEach(function (t) { t.stop(); });
         stream = null;
       }
       recorder = null;
 
+      /* persistir (no bloquea la interfaz) */
+      if (hasIdb()) {
+        global.RecordingStore.put(rec).then(function () {
+          return global.RecordingStore.trimToMax();
+        }).catch(function () { /* noop */ });
+      }
+
       if (cb.onRecording) cb.onRecording(rec);
     };
 
     recStart = Date.now();
     recorder.start();
+    startLevelMeter();
 
     recognition = makeRecognition();
     if (recognition) {
@@ -114,12 +172,43 @@
   }
 
   function isActive() { return sessionActive; }
+
+  /* --- Grabaciones (memoria + IndexedDB) --- */
+  function loadStored() {
+    if (!hasIdb()) return Promise.resolve();
+    return global.RecordingStore.getAll()
+      .then(function (list) {
+        recordings = list
+          .map(function (r) {
+            try { r.url = URL.createObjectURL(r.blob); } catch (e) { r.url = null; }
+            return r;
+          })
+          .concat(recordings)
+          .sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
+        while (recordings.length > global.RecordingStore.MAX_KEEP) recordings.pop();
+      })
+      .catch(function () { /* noop */ });
+  }
+
   function getRecordings() { return recordings; }
+
+  function removeRecording(id, revoke) {
+    recordings = recordings.filter(function (r) { return r.id !== id; });
+    if (hasIdb()) global.RecordingStore.remove(id).catch(function () { /* noop */ });
+  }
+
+  function clearRecordings() {
+    recordings.forEach(function (r) { if (r.url) URL.revokeObjectURL(r.url); });
+    recordings = [];
+    if (hasIdb()) global.RecordingStore.clear().catch(function () { /* noop */ });
+  }
+
   function setCallbacks(o) {
     if (o) {
       if (o.onRecording) cb.onRecording = o.onRecording;
       if (o.onTranscript) cb.onTranscript = o.onTranscript;
       if (o.onError) cb.onError = o.onError;
+      if (o.onLevel) cb.onLevel = o.onLevel;
     }
   }
 
@@ -150,7 +239,10 @@
     startSession: startSession,
     stopSession: stopSession,
     isActive: isActive,
+    loadStored: loadStored,
     getRecordings: getRecordings,
+    removeRecording: removeRecording,
+    clearRecordings: clearRecordings,
     setCallbacks: setCallbacks,
     speak: speak
   };
