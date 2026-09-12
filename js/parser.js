@@ -44,7 +44,7 @@
   }
 
   function detectIntent(s) {
-    if (/((?<![a-z])(?:que hora es|que horas son)\b|dame la hora\b|da la hora\b|que tiempo hace)\b/.test(s)) return 'time';
+    if (/(\bque hora es\b|\bque horas son\b|dame la hora\b|da la hora\b)/.test(s) && !/a que hora/.test(s)) return 'time';
     if (/((que dia es (hoy)?|en que dia estamos|que fecha es|a que dia estamos)\b)/.test(s)) return 'date';
     if (/\b(hola|buenos dias|buenas tardes|buenas noches)\b/.test(s) ||
       /(que (puedes|sabes) hacer|que funciones tienes|como funciona|presentate|quien eres|cuentame sobre ti)\b/.test(s) ||

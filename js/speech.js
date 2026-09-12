@@ -114,7 +114,14 @@
     sessionActive = true;
     accumulatedText = '';
 
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      sessionActive = false;
+      stream = null;
+      stopLevelMeter();
+      throw e;
+    }
     recorder = new global.MediaRecorder(stream);
     chunks = [];
 
