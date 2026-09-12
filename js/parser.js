@@ -1,5 +1,5 @@
 /* Parser: convierte frases en español en comandos de calendario para Andri.
-   No usa API externa: interpreta fechas, horas e intenciones de forma local. */
+   No usa API externa: interpreta fechas, horas, intenciones y respuestas de forma local. */
 (function (global) {
   'use strict';
 
@@ -19,13 +19,16 @@
     'debo', 'puedes', 'ayudame', 'oye', 'ok', 'porfavor', 'por', 'favor',
     'mis', 'mi', 'agenda', 'agendar', 'agrega', 'agregar', 'crea', 'crear',
     'registra', 'registrar', 'guarda', 'guardar', 'apunta', 'anota', 'anade',
-    'pon', 'ponme', 'recuerdame', 'recordarme', 'apuntarme'];
+    'pon', 'ponme', 'recuerdame', 'recordarme', 'apuntarme', 'agendame',
+    'corre', 'quiere', 'participa', 'soy', 'tener'];
 
   var NUMBER_WORDS = { 'cero': 0, 'una': 1, 'uno': 1, 'dos': 2, 'tres': 3,
     'cuatro': 4, 'cinco': 5, 'seis': 6, 'siete': 7, 'ocho': 8, 'nueve': 9,
     'diez': 10, 'once': 11, 'doce': 12, 'trece': 13, 'catorce': 14,
     'quince': 15, 'dieciseis': 16, 'diecisiete': 17, 'dieciocho': 18,
-    'diecinueve': 19, 'veinte': 20 };
+    'diecinueve': 19, 'veinte': 20, 'veintiuno': 21, 'veintidos': 22,
+    'veintitres': 23, 'veinticuatro': 24, 'treinta': 30, 'cuarenta': 40,
+    'cincuenta': 50 };
 
   function normalize(s) {
     return String(s).toLowerCase()
@@ -41,16 +44,23 @@
   }
 
   function detectIntent(s) {
+    if (/((?<![a-z])(?:que hora es|que horas son)\b|dame la hora\b|da la hora\b|que tiempo hace)\b/.test(s)) return 'time';
+    if (/((que dia es (hoy)?|en que dia estamos|que fecha es|a que dia estamos)\b)/.test(s)) return 'date';
+    if (/\b(hola|buenos dias|buenas tardes|buenas noches)\b/.test(s) ||
+      /(que (puedes|sabes) hacer|que funciones tienes|como funciona|presentate|quien eres|cuentame sobre ti)\b/.test(s) ||
+      /\bayuda\b(?! a | me a )/.test(s)) {
+      return 'help';
+    }
     if (/(borra|elimina|cancela|quita|remueve|retira|borrame|eliminame|cancelar)\b/.test(s)) {
       return 'delete';
     }
-    if (/(cuando es|cuando tengo|a que hora|en que dia|que dia|cual es|cuales son|donde esta)\b/.test(s)) {
+    if (/((cuando es|cuando tengo|a que hora|cual es|cuales son|donde esta|en que dia)\b)/.test(s)) {
       return 'ask';
     }
-    if (/(que (tengo|hay|eventos|citas|habra)|lista|listame|muestra|muestrame|dime|mis (citas|eventos)|proxim)\b/.test(s)) {
+    if (/(que (tengo|hay|eventos|citas|habra)|lista|listame|muestra|muestrame|dime|mis (citas|eventos)|proximos (eventos|citas)|proximas (citas|eventos))\b/.test(s)) {
       return 'list';
     }
-    if (/(\b(agendar|agenda|agrega|agregar|crea|crear|registra|recuerd|recordatorio|tengo|tener|guardar|guarda|apunta|anota|anade|cita|reunion|conferencia|tarea|evento|viaje|examen|entrevista|cumpleanos|aniversario|concierto|comida|cena|desayuno|almuerzo|sesion|clase|partido|presentacion|prueba|fiesta|revision|consulta|reparacion)\b)/.test(s)) {
+    if (/(\b(agend\w*|agrega|agregar|crea|crear|registra|recuerd|recordatorio|tengo|tener|guardar|guarda|apunta|anota|anade|cita|reunion|conferencia|tarea|evento|viaje|examen|entrevista|cumpleanos|aniversario|concierto|comida|cena|desayuno|almuerzo|sesion|clase|partido|presentacion|prueba|fiesta|revision|consulta|reparacion|videollamada|llamada|carrera|maraton|entrenamiento|torneo|juego)\b)/.test(s)) {
       return 'create';
     }
     return 'chat';
@@ -61,6 +71,11 @@
   }
   function addDays(d, n) {
     return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  }
+  function mondayOf(d) {
+    var day = d.getDay();
+    var off = day === 0 ? -6 : 1 - day;
+    return addDays(startOfDay(d), off);
   }
   function pad(n) {
     return (n < 10 ? '0' : '') + n;
@@ -100,6 +115,29 @@
           return { date: d2, iso: iso(d2), matched: m[0] };
         }
       }
+    }
+
+    /* esta semana → lunes de la semana actual */
+    if (/\besta semana\b/.test(s)) {
+      var dme = mondayOf(startOfDay(now));
+      return { date: dme, iso: iso(dme), matched: 'esta semana' };
+    }
+
+    /* la próxima semana · en una semana */
+    if (/\bla proxima semana\b/.test(s)) {
+      var dm = mondayOf(addDays(startOfDay(now), 7));
+      return { date: dm, iso: iso(dm), matched: 'la proxima semana' };
+    }
+    if (/\ben una semana\b/.test(s)) {
+      var ds = addDays(startOfDay(now), 7);
+      return { date: ds, iso: iso(ds), matched: 'en una semana' };
+    }
+
+    /* en un mes · el próximo mes */
+    if (/\b(?:en un mes|el proximo mes|el siguiente mes)\b/.test(s)) {
+      var dmn = Math.min(startOfDay(now).getDate(), 28);
+      var dmx = new Date(now.getFullYear(), now.getMonth() + 1, dmn);
+      return { date: dmx, iso: iso(dmx), matched: 'en un mes' };
     }
 
     /* pasado mañana */
@@ -152,11 +190,44 @@
     return null;
   }
 
+  function extractDates(s, now) {
+    var out = [];
+    var work = normalize(s);
+    for (var i = 0; i < 4; i++) {
+      var r = extractDate(work, now);
+      if (!r) break;
+      out.push(r);
+      work = work.replace(new RegExp(escapeRx(r.matched), 'g'), ' ');
+    }
+    return out;
+  }
+
   function applyPeriod(h, period) {
     if (period === 'manana') return h === 12 ? 0 : h;
     if (period === 'madrugada') return h === 12 ? 0 : h;
     if (period === 'tarde' || period === 'noche') return h < 12 ? h + 12 : h;
     return h;
+  }
+
+  function minutesFrom(s, hval) {
+    var h = hval, m = 0, q;
+    q = s.match(/\sy\s+(media|treinta)\b/);
+    if (q) return { h: h, m: 30 };
+    q = s.match(/\sy\s+cuarto\b/);
+    if (q) return { h: h, m: 15 };
+    q = s.match(/\sy\s+(cincuenta|cuarenta|veinticinco|veinte|quince|\d{1,2})\b/);
+    if (q) {
+      var v = /^\d+$/.test(q[1]) ? parseInt(q[1], 10) : NUMBER_WORDS[q[1]];
+      if (v === undefined || v > 59) v = 0;
+      return { h: h, m: v };
+    }
+    q = s.match(/\smenos\s+(cuarto|\d{1,2})\b/);
+    if (q) {
+      h = h === 1 ? 12 : h - 1;
+      m = q[1] === 'cuarto' ? 15 : (parseInt(q[1], 10) || 15);
+      return { h: h, m: (60 - m) % 60 };
+    }
+    return { h: h, m: 0 };
   }
 
   function extractTime(s) {
@@ -176,14 +247,15 @@
       return { hours: applyPeriod(h, period), minutes: mins, matched: m[0] };
     }
 
-    /* a las 4 · las 9 · a la 1 · a las cuatro · a la una */
-    m = s.match(/(?:a las|a la|las)\s+(cero|una?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieciseis|diecisiete|dieciocho|diecinueve|veinte|\d{1,2})(?![:\d])/);
+    /* a las 4 · las 9 · a la 1 · a las cuatro · a la una · a las 4 y media */
+    m = s.match(/(?:a las|a la|las)\s+(cero|una?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieciseis|diecisiete|dieciocho|diecinueve|veinte|veintiuno|veintidos|veintitres|veinticuatro|\d{1,2})(?![:\d])/);
     if (m) {
       var hv = /\d/.test(m[1]) ? parseInt(m[1], 10) : NUMBER_WORDS[m[1]];
       if (hv === undefined || hv > 24) return null;
-      var h2 = applyPeriod(hv, period);
-      if (h2 === 0 && /am\b/.test(s)) h2 = 0;
-      return { hours: h2, minutes: 0, matched: m[0] };
+      var res = minutesFrom(s, hv);
+      var h2 = applyPeriod(res.h, period);
+      if (h2 === 0 && /\bam\b/.test(s)) h2 = 0;
+      return { hours: h2, minutes: res.m, matched: m[0] };
     }
 
     /* 4 pm / 9 am */
@@ -218,10 +290,18 @@
 
   function extractTitle(contents, parsed) {
     var s = normalize(contents);
-    if (parsed.date) s = s.replace(new RegExp(escapeRx(parsed.date.matched), 'g'), ' ');
+    (parsed.dates || (parsed.date ? [parsed.date] : [])).forEach(function (d) {
+      s = s.replace(new RegExp(escapeRx(d.matched), 'g'), ' ');
+    });
     if (parsed.time) s = s.replace(new RegExp(escapeRx(parsed.time.matched), 'g'), ' ');
+
     s = s.replace(/\bde la (manana|tarde|noche|madrugada)\b/g, ' ');
     s = s.replace(/\b(am|pm)\b/g, ' ');
+    s = s.replace(/\s+y\s+(media|cuarto|\d{1,2})\b/g, ' ');
+    s = s.replace(/\s+menos\s+cuarto\b/g, ' ');
+    s = s.replace(/\bmas tarde\b/g, ' ');
+    s = s.replace(/\b(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/g, ' ');
+    s = s.replace(/\b(de la|del|en|los|las|el|la)\b/g, ' ');
 
     var words = s.split(/[^a-z0-9]+/).filter(Boolean).slice(0, 12);
     var startIdx = 0;
@@ -242,7 +322,9 @@
   function extractKeywords(s, parsed) {
     s = normalize(s);
     if (parsed) {
-      if (parsed.date) s = s.replace(new RegExp(escapeRx(parsed.date.matched), 'g'), ' ');
+      (parsed.dates || (parsed.date ? [parsed.date] : [])).forEach(function (d) {
+        s = s.replace(new RegExp(escapeRx(d.matched), 'g'), ' ');
+      });
       if (parsed.time) s = s.replace(new RegExp(escapeRx(parsed.time.matched), 'g'), ' ');
     }
     var stop = new Set(['me', 'mi', 'mis', 'el', 'la', 'los', 'las', 'de', 'del',
@@ -267,6 +349,7 @@
       intent: 'chat',
       title: 'Evento',
       date: null,
+      dates: [],
       time: null,
       allDay: true,
       eventType: null,
@@ -277,14 +360,15 @@
       cleaned: normalized
     };
 
-    var wake = /\bandri[a-z0-9]*\b|\bandry\b|\bandra\b|corta voz\b/;
+    var wake = /\bandri[a-z0-9]*\b|\bandry\b|\bandra\b|\bandrea\b|corta voz\b/;
     parsed.hasWake = wake.test(raw);
     normalized = normalized.replace(wake, ' ').replace(/\s+/g, ' ').trim();
     parsed.cleaned = normalized;
 
     parsed.intent = detectIntent(normalized);
-    parsed.date = extractDate(normalized);
     parsed.time = extractTime(normalized);
+    parsed.dates = extractDates(normalized);
+    parsed.date = parsed.dates[0] || null;
     parsed.eventType = findEventType(normalized);
 
     if (parsed.intent === 'create') {
@@ -302,6 +386,7 @@
     parse: parse,
     normalize: normalize,
     extractDate: extractDate,
+    extractDates: extractDates,
     extractTime: extractTime,
     WEEKDAYS: WEEKDAYS,
     MONTHS: MONTHS

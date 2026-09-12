@@ -1,0 +1,21 @@
+{
+  "name": "Andri — Asistente personal por voz",
+  "short_name": "Andri",
+  "description": "Asistente de voz en español que agenda citas y eventos en tu calendario local. Todo funciona en tu navegador.",
+  "lang": "es",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f1024",
+  "theme_color": "#7c6cff",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "icons/andri.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

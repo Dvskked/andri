@@ -34,18 +34,32 @@
     return 'el ' + DOW_CAP[d.getDay()] + ' ' + d.getDate() + ' de ' + MONTHS_AB[d.getMonth()];
   }
 
-  function describeTime(hours, minutes) {
+  function describeToday(iso) {
+    var d = toDate(iso);
+    return DOW_CAP[d.getDay()] + ' ' + d.getDate() + ' de ' + MONTHS_AB[d.getMonth()] + ' de ' + d.getFullYear();
+  }
+
+  function deDate(iso) {
+    var l = describeDate(iso);
+    return l.indexOf('el ') === 0 ? 'del ' + l.slice(3) : 'de ' + l;
+  }
+
+  function describeClock(hours, minutes) {
     var m = minutes || 0;
     var h = hours;
-    if (h === 0) return m ? 'a la 12 y ' + m + ' de la madrugada' : 'a las 12 de la madrugada';
-    if (h === 12) return m ? 'a las 12 y ' + m + ' del mediod\u00eda' : 'a las 12 del mediod\u00eda';
+    if (h === 0) return m ? 'las 12 y ' + m + ' de la madrugada' : 'las 12 de la madrugada';
+    if (h === 12) return m ? 'las 12 y ' + m + ' del mediod\u00eda' : 'las 12 del mediod\u00eda';
 
     var part, art;
     if (h < 12) { part = 'de la ma\u00f1ana'; }
     else if (h < 19) { h -= 12; part = 'de la tarde'; }
     else { h -= 12; part = 'de la noche'; }
     art = h === 1 ? 'la' : 'las';
-    return m ? 'a ' + art + ' ' + h + ' y ' + m + ' ' + part : 'a ' + art + ' ' + h + ' ' + part;
+    return m ? art + ' ' + h + ' y ' + m + ' ' + part : art + ' ' + h + ' ' + part;
+  }
+
+  function describeTime(hours, minutes) {
+    return 'a ' + describeClock(hours, minutes);
   }
 
   function describeTimeStored(t) {
@@ -66,22 +80,37 @@
   }
 
   function doCreate(parsed) {
-    if (!parsed.date) {
+    var dates = parsed.dates && parsed.dates.length ? parsed.dates.slice(0, 4)
+      : (parsed.date ? [parsed.date] : []);
+
+    if (!dates.length) {
       say('No entend\u00ed bien la fecha. Intenta algo como: Andri, tengo una cita el s\u00e1bado a las 4 de la tarde.');
       return;
     }
+
     var t = parsed.time;
-    var ev = Calendar.addEvent({
-      title: parsed.title || 'Evento',
-      date: parsed.date.date,
-      time: t ? pad(t.hours) + ':' + pad(t.minutes) : null,
-      allDay: !t,
-      source: 'voice'
+    var time = t ? pad(t.hours) + ':' + pad(t.minutes) : null;
+    var created = dates.map(function (d) {
+      return Calendar.addEvent({
+        title: parsed.title || 'Evento',
+        date: d.date,
+        time: time,
+        allDay: !t,
+        source: 'voice'
+      });
     });
-    var when = describeDate(ev.date);
-    var timeTxt = t ? ' ' + describeTime(t.hours, t.minutes) : ' (todo el d\u00eda)';
-    say('\u00a1Listo! Agend\u00e9 ' + quote(ev.title) + ' para ' + when + timeTxt + '.');
     notifyChanged();
+
+    var timeTxt = t ? ' ' + describeTime(t.hours, t.minutes) : ' (todo el d\u00eda)';
+
+    if (created.length === 1) {
+      var when = describeDate(created[0].date);
+      say('\u00a1Listo! Agend\u00e9 ' + quote(created[0].title) + ' para ' + when + timeTxt + '.');
+      return;
+    }
+
+    var days = created.map(function (ev) { return describeDate(ev.date); }).join(' y ');
+    say('\u00a1Hecho! Agend\u00e9 ' + quote(created[0].title) + ' para ' + days + timeTxt + '. Son ' + created.length + ' fechas en total.');
   }
 
   function doList(parsed) {
@@ -144,17 +173,27 @@
     }
 
     var ev = cands[0];
-    var timeTxt = ' ' + describeTimeStored(ev.time);
-    say('Tu pr\u00f3ximo evento es ' + quote(ev.title) + ' para ' + describeDate(ev.date) + timeTxt + '.');
+    say('Tu pr\u00f3ximo evento es ' + quote(ev.title) + ' para ' + describeDate(ev.date) + ' ' + describeTimeStored(ev.time) + '.');
   }
 
   function doDelete(parsed) {
-    var targets;
-    if (parsed.date) {
-      targets = Calendar.getByDate(parsed.date.iso);
+    var targets = [];
+
+    if (parsed.dates && parsed.dates.length) {
+      parsed.dates.slice(0, 4).forEach(function (d) {
+        targets = targets.concat(Calendar.getByDate(d.iso));
+      });
     } else {
       targets = Calendar.upcoming(9999);
     }
+
+    /* eliminar duplicados por id */
+    var seen = {};
+    targets = targets.filter(function (ev) {
+      if (seen[ev.id]) return false;
+      seen[ev.id] = true;
+      return true;
+    });
 
     if (parsed.keywords && parsed.keywords.length) {
       var kw = parsed.keywords;
@@ -166,7 +205,7 @@
 
     if (!targets.length) {
       say('No encontr\u00e9 ning\u00fan evento que eliminar' +
-        (parsed.date ? ' de ' + describeDate(parsed.date.iso) : '') + '.');
+        (parsed.date ? ' ' + deDate(parsed.date.iso) : '') + '.');
       return;
     }
 
@@ -175,8 +214,29 @@
     var names = targets.slice(0, 3).map(function (ev) { return quote(ev.title); }).join(', ');
     say('Elimin\u00e9 ' + n + (n === 1 ? ' evento' : ' eventos') +
       (names ? ' (' + names + (n > 3 ? ' y m\u00e1s' : '') + ')' : '') +
-      (parsed.date ? ' de ' + describeDate(parsed.date.iso) : '') + '.');
+      (parsed.date ? ' ' + deDate(parsed.date.iso) : '') + '.');
     notifyChanged();
+  }
+
+  function doTime() {
+    var now = new Date();
+    say('Son ' + describeClock(now.getHours(), now.getMinutes()) + '.');
+  }
+
+  function doDate() {
+    var now = new Date();
+    say('Hoy es ' + describeToday(Calendar.toISO(now)) + '.');
+  }
+
+  function doHelp() {
+    say('Hola, soy Andri, tu asistente por voz.\n' +
+        'Puedo hacer cosas como:\n' +
+        '\u2022 Agendar citas u eventos: "tengo una cita el s\u00e1bado a las 4 de la tarde".\n' +
+        '\u2022 Agendar varias fechas: "reuni\u00f3n el lunes y el mi\u00e9rcoles a las 10".\n' +
+        '\u2022 Decirte la hora o la fecha de hoy.\n' +
+        '\u2022 Listar lo que tienes: "\u00bfqu\u00e9 tengo ma\u00f1ana?".\n' +
+        '\u2022 Buscar un evento y eliminar citas.',
+        'Hola, soy Andri. Puedo agendar citas y eventos, recordarte tus planes, decirte la hora y la fecha, listar lo que tienes y eliminar eventos. Pulsa el micr\u00f3fono y dime qu\u00e9 necesitas.');
   }
 
   function process(input, opts) {
@@ -186,8 +246,12 @@
 
     var parsed = Parser.parse(text);
 
-    if (opts.requireWake && !parsed.hasWake) {
-      say('Disculpa, soy Andri. Di "Andri" primero y luego lo que necesitas. Por ejemplo: Andri, tengo una cita el s\u00e1bado a las 4 de la tarde.');
+    if (parsed.intent === 'chat') {
+      if (opts.requireWake && !parsed.hasWake) {
+        say('Disculpa, soy Andri. Di "Andri" primero y luego lo que necesitas. Por ejemplo: Andri, tengo una cita el s\u00e1bado a las 4 de la tarde.');
+        return;
+      }
+      say('Todav\u00eda no s\u00e9 hacer eso, pero puedo agendar citas y eventos en tu calendario, decirte qu\u00e9 tienes o eliminar eventos. Di, por ejemplo: Andri, agrega una reuni\u00f3n el lunes a las 9 de la ma\u00f1ana.');
       return;
     }
 
@@ -196,8 +260,10 @@
       case 'list': doList(parsed); break;
       case 'ask': doAsk(parsed); break;
       case 'delete': doDelete(parsed); break;
-      default:
-        say('Todav\u00eda no s\u00e9 hacer eso, pero puedo agendar citas y eventos en tu calendario, decirte qu\u00e9 tienes o eliminar eventos. Di, por ejemplo: Andri, agrega una reuni\u00f3n el lunes a las 9 de la ma\u00f1ana.');
+      case 'time': doTime(); break;
+      case 'date': doDate(); break;
+      case 'help': doHelp(); break;
+      default: break;
     }
   }
 
